@@ -1,0 +1,103 @@
+/* Tailwind v4 forrás. Fordítás: npx @tailwindcss/cli -i tailwind.css -o styles.css --minify */
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-line);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-danger: var(--c-danger);
+  --color-chart: var(--c-chart);
+  --color-gold: var(--c-gold);
+}
+
+/* Világos téma */
+:root {
+  --c-bg: #f3f5f0;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f3ec;
+  --c-line: #e2e7dc;
+  --c-fg: #111827;
+  --c-muted: #586174;
+  --c-faint: #8b93a3;
+  --c-accent: #a3e635;
+  --c-accent-ink: #1a2e05;
+  --c-accent-fg: #4d7c0f;
+  --c-danger: #e11d48;
+  --c-chart: #65a30d;
+  --c-gold: #b45309;
+  --glow: rgba(132, 204, 22, .10);
+  color-scheme: light;
+}
+
+/* Sötét téma */
+.dark {
+  --c-bg: #0b0f17;
+  --c-surface: #121826;
+  --c-surface-2: #182033;
+  --c-line: #232c3f;
+  --c-fg: #e8edf5;
+  --c-muted: #9aa5b8;
+  --c-faint: #65718a;
+  --c-accent: #a3e635;
+  --c-accent-ink: #0b1300;
+  --c-accent-fg: #bef264;
+  --c-danger: #fb7185;
+  --c-chart: #84cc16;
+  --c-gold: #fbbf24;
+  --glow: rgba(163, 230, 53, .10);
+  color-scheme: dark;
+}
+
+@layer base {
+  html { background: var(--c-bg); }
+  body {
+    overscroll-behavior-y: contain;
+    background: radial-gradient(1100px 480px at 50% -220px, var(--glow), transparent 60%), var(--c-bg);
+    background-attachment: fixed;
+    color: var(--c-fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, label { cursor: pointer; }
+  button:disabled { cursor: default; }
+}
+
+[v-cloak] { display: none; }
+.num { font-variant-numeric: tabular-nums; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.dark input[type=date]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .6; }
+
+.card { background: var(--c-surface); border: 1px solid var(--c-line); }
+.dark .card { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)), var(--c-surface); }
+.field {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  color: var(--c-fg);
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field::placeholder { color: var(--c-faint); }
+.field:focus { border-color: var(--c-chart); box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-accent) 30%, transparent); }
+
+.fab-pos { right: max(1.25rem, calc(50vw - 14rem + 1.25rem)); }
+.safe-bottom { padding-bottom: max(.75rem, env(safe-area-inset-bottom)); }
+.safe-top { padding-top: max(.75rem, env(safe-area-inset-top)); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity .2s, transform .2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translate(-50%, 8px); }
+.sheet-enter-active, .sheet-leave-active { transition: opacity .2s; }
+.sheet-enter-from, .sheet-leave-to { opacity: 0; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pop { animation: pop .25s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .pop { animation: none; } * { transition: none !important; } }

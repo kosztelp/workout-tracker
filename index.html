@@ -2,215 +2,615 @@
 <html lang="hu">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Edzéskövető</title>
-  
-  <!-- Tailwind CSS (via CDN for simplicity) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Vue 3 (via CDN) -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
-  <!-- PWA Manifest -->
+  <!-- Téma beállítása még a kirajzolás előtt (nincs villanás) -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('workout-tracker-theme') || 'system';
+        var d = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (d) document.documentElement.classList.add('dark');
+      } catch (e) {}
+    })();
+  </script>
+
+  <link rel="stylesheet" href="styles.css">
+  <!-- Vue 3, rögzített verzió -->
+  <script src="https://unpkg.com/vue@3.5.46/dist/vue.global.prod.js"></script>
+
+  <!-- PWA -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1e40af">
-  <link rel="apple-touch-icon" href="icon.svg">
-  
-  <style>
-    /* Prevent pull-to-refresh on mobile when dragging items */
-    body { overscroll-behavior-y: contain; }
-  </style>
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Edzés">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 </head>
-<body class="bg-gray-100 text-gray-900 font-sans antialiased">
-  <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-xl overflow-hidden flex flex-col">
-    
-    <!-- Header -->
-    <header class="bg-blue-800 text-white p-4 shadow-md sticky top-0 z-10 flex justify-between items-center">
-      <h1 class="text-xl font-bold">Edzéskövető</h1>
-      <div v-if="currentView === 'list'" class="flex space-x-3 text-sm">
-        <button @click="exportData" class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded" title="Adatok exportálása">Export</button>
-        <label class="bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded cursor-pointer" title="Adatok importálása">
-          Import
-          <input type="file" accept=".json" @change="importData" class="hidden">
-        </label>
+<body class="antialiased min-h-screen">
+  <div id="app" v-cloak class="max-w-md mx-auto min-h-screen flex flex-col">
+
+    <!-- ================= FEJLÉC ================= -->
+    <header class="safe-top sticky top-0 z-20 backdrop-blur-xl bg-bg/80 border-b border-line px-4 pb-3">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <button v-if="view === 'edit'" @click="cancelEdit" class="-ml-1 w-9 h-9 grid place-items-center rounded-xl hover:bg-surface-2" aria-label="Vissza">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div v-else class="shrink-0 w-9 h-9 rounded-xl bg-accent text-accent-ink grid place-items-center shadow-[0_0_24px_rgba(163,230,53,.35)]">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+          </div>
+          <div class="min-w-0">
+            <h1 class="text-lg font-extrabold tracking-tight leading-none truncate">
+              {{ view === 'list' ? 'Edzéskövető' : view === 'progress' ? 'Haladás' : view === 'settings' ? 'Beállítások' : (isExisting ? 'Edzés szerkesztése' : 'Új edzés') }}
+            </h1>
+            <p v-if="view === 'list'" class="text-xs text-muted mt-1">Hajrá, ne hagyd ki a mai napot!</p>
+          </div>
+        </div>
+        <div class="flex gap-1.5">
+          <button v-if="view === 'edit'" @click="saveAsTemplate" class="h-9 px-3 rounded-xl bg-surface-2 border border-line text-xs font-semibold text-muted hover:text-fg" title="Mentés sablonként">
+            Sablonba
+          </button>
+          <button v-else @click="cycleTheme" class="w-9 h-9 grid place-items-center rounded-xl bg-surface-2 border border-line text-muted hover:text-fg"
+                  :title="theme === 'system' ? 'Téma: rendszer szerint' : theme === 'light' ? 'Téma: világos' : 'Téma: sötét'" aria-label="Téma váltása">
+            <svg v-if="theme === 'light'" class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <svg v-else-if="theme === 'dark'" class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+            <svg v-else class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+          </button>
+        </div>
       </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="flex-1 overflow-y-auto p-4 relative">
-      
-      <!-- List View -->
-      <div v-if="currentView === 'list'">
-        <div v-if="workouts.length === 0" class="text-center text-gray-500 mt-10">
-          <p>Még nem rögzítettél edzést.</p>
-          <p>Kattints az alábbi gombra az elsőhöz!</p>
-        </div>
-        
-        <div class="space-y-4 pb-20">
-          <div v-for="workout in workouts" :key="workout.id" 
-               class="bg-white border rounded-xl shadow-sm p-4 relative overflow-hidden">
-            <div class="flex justify-between items-start mb-2">
-              <h2 class="text-lg font-bold text-gray-800">{{ formatDate(workout.date) }}</h2>
-              <div class="flex space-x-2">
-                <button @click="editWorkout(workout)" class="text-blue-600 hover:text-blue-800 p-1">
-                  ✏️
-                </button>
-                <button @click="deleteWorkout(workout.id)" class="text-red-500 hover:text-red-700 p-1">
-                  🗑️
-                </button>
-              </div>
+    <main class="flex-1 px-4 pt-4">
+
+      <!-- Sérült adatok figyelmeztetés -->
+      <div v-if="loadFailed" class="mb-4 rounded-2xl border border-danger/40 bg-danger/10 p-3 text-sm">
+        <b class="text-danger">A mentett adatok nem olvashatók.</b>
+        Amíg nem importálsz egy mentést, az új változások nem mentődnek el, hogy a régi adat ne vesszen el.
+      </div>
+
+      <!-- ===================== LISTA ===================== -->
+      <div v-if="view === 'list'" class="pb-40">
+
+        <!-- Mentés-emlékeztető -->
+        <div v-if="showBackupReminder" class="card pop rounded-2xl p-3.5 mb-4 flex items-start gap-3 !border-accent/40">
+          <div class="shrink-0 w-9 h-9 rounded-xl bg-accent/15 text-accent-fg grid place-items-center">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold">Ideje menteni!</p>
+            <p class="text-xs text-muted mt-0.5">
+              {{ daysSinceBackup === null ? 'Még sosem készítettél mentést.' : `Utoljára ${daysSinceBackup} napja mentettél.` }}
+              Az adatok csak ebben a böngészőben vannak.
+            </p>
+            <div class="flex gap-2 mt-2.5">
+              <button @click="exportData" class="px-3 py-1.5 rounded-lg bg-accent text-accent-ink text-xs font-bold">Mentés most</button>
+              <button @click="snoozeBackup" class="px-3 py-1.5 rounded-lg bg-surface-2 border border-line text-xs font-semibold text-muted">Később</button>
             </div>
-            
-            <div class="flex flex-wrap gap-1 mb-3">
-              <span v-for="tag in workout.tags" :key="tag" 
-                    class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
-                {{ tag }}
-              </span>
-            </div>
-            
-            <ul class="text-sm text-gray-600 space-y-1">
-              <li v-for="ex in workout.exercises" :key="ex.id" class="truncate">
-                • {{ ex.name }} ({{ ex.sets.length }} sorozat)
-              </li>
-            </ul>
           </div>
         </div>
 
-        <!-- Floating Action Button -->
-        <button @click="startNewWorkout" 
-                class="absolute bottom-6 right-6 bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg text-3xl flex items-center justify-center hover:bg-blue-700 transition transform hover:scale-105">
-          +
+        <!-- Statisztika -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <div class="card rounded-2xl p-3">
+            <div class="text-[11px] uppercase tracking-wider text-muted">E héten</div>
+            <div class="num text-2xl font-extrabold text-accent-fg mt-1">{{ stats.thisWeek }}</div>
+          </div>
+          <div class="card rounded-2xl p-3">
+            <div class="text-[11px] uppercase tracking-wider text-muted">E hónapban</div>
+            <div class="num text-2xl font-extrabold mt-1">{{ stats.thisMonth }}</div>
+          </div>
+          <div class="card rounded-2xl p-3">
+            <div class="text-[11px] uppercase tracking-wider text-muted">Összesen</div>
+            <div class="num text-2xl font-extrabold mt-1">{{ stats.total }}</div>
+          </div>
+        </div>
+
+        <!-- Keresés és szűrés -->
+        <div v-if="workouts.length" class="mb-4">
+          <div class="relative">
+            <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" v-model="searchText" placeholder="Keresés gyakorlatra vagy címkére…"
+                   class="field w-full pl-9 pr-3 py-2.5 rounded-xl text-base">
+          </div>
+          <div v-if="usedTags.length" class="flex gap-1.5 mt-2.5 overflow-x-auto pb-1 -mx-4 px-4 [scrollbar-width:none]">
+            <button @click="filterTag = ''"
+                    :class="!filterTag ? 'bg-fg text-bg border-fg' : 'bg-surface text-muted border-line'"
+                    class="shrink-0 border px-3 py-1 rounded-full text-xs font-semibold">Mind</button>
+            <button v-for="tag in usedTags" :key="tag" @click="filterTag = filterTag === tag ? '' : tag"
+                    :class="filterTag === tag ? 'bg-accent text-accent-ink border-accent' : 'bg-surface text-muted border-line'"
+                    class="shrink-0 border px-3 py-1 rounded-full text-xs font-semibold">{{ tag }}</button>
+          </div>
+        </div>
+
+        <!-- Üres állapot -->
+        <div v-if="workouts.length === 0" class="text-center mt-14 px-6">
+          <div class="mx-auto w-20 h-20 rounded-3xl bg-accent/15 border border-accent/30 grid place-items-center mb-5">
+            <svg class="w-10 h-10 text-accent-fg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+          </div>
+          <p class="text-lg font-bold">Még nincs rögzített edzés</p>
+          <p class="text-muted text-sm mt-1">Nyomj a <span class="text-accent-fg font-bold">+</span> gombra, és vágj bele!</p>
+        </div>
+        <div v-else-if="filteredWorkouts.length === 0" class="text-center text-muted text-sm mt-10">
+          Nincs találat.
+          <button @click="searchText = ''; filterTag = ''" class="text-accent-fg font-semibold underline ml-1">Szűrők törlése</button>
+        </div>
+
+        <!-- Edzéskártyák -->
+        <div class="space-y-3">
+          <article v-for="workout in filteredWorkouts" :key="workout.id" class="card pop rounded-2xl p-4">
+            <div class="flex gap-3">
+              <div class="shrink-0 w-14 h-14 rounded-xl bg-surface-2 border border-line flex flex-col items-center justify-center">
+                <span class="num text-xl font-extrabold leading-none">{{ formatDay(workout.date) }}</span>
+                <span class="text-[11px] uppercase text-accent-fg font-bold mt-1">{{ formatMonth(workout.date) }}</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <h2 class="font-bold capitalize truncate">
+                      {{ formatWeekday(workout.date) }}
+                      <span v-if="workoutPRCount(workout)" class="ml-1 align-middle text-[11px] font-bold text-gold normal-case">🏆 {{ workoutPRCount(workout) }} csúcs</span>
+                    </h2>
+                    <p class="text-xs text-muted num">
+                      {{ formatDate(workout.date) }} · {{ workout.exercises.length }} gyakorlat
+                      <template v-if="workoutVolume(workout) > 0"> · {{ formatNumber(workoutVolume(workout)) }} kg</template>
+                    </p>
+                  </div>
+                  <div class="flex -mr-1.5 -mt-1.5 text-faint">
+                    <button @click="duplicateWorkout(workout)" class="w-9 h-9 grid place-items-center rounded-lg hover:text-fg hover:bg-surface-2" title="Megismétlés ma" aria-label="Megismétlés">
+                      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
+                    </button>
+                    <button @click="editWorkout(workout)" class="w-9 h-9 grid place-items-center rounded-lg hover:text-accent-fg hover:bg-surface-2" title="Szerkesztés" aria-label="Szerkesztés">
+                      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+                    </button>
+                    <button @click="deleteWorkout(workout.id)" class="w-9 h-9 grid place-items-center rounded-lg hover:text-danger hover:bg-surface-2" title="Törlés" aria-label="Törlés">
+                      <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div v-if="workout.tags.length" class="flex flex-wrap gap-1.5 mt-2">
+                  <span v-for="tag in workout.tags" :key="tag"
+                        class="bg-accent/15 text-accent-fg border border-accent/30 text-[11px] px-2 py-0.5 rounded-full font-semibold">{{ tag }}</span>
+                </div>
+              </div>
+            </div>
+
+            <ul v-if="workout.exercises.length" class="mt-3 pt-3 border-t border-line space-y-1">
+              <li v-for="ex in workout.exercises" :key="ex.id">
+                <button @click="openProgressFor(ex.name)" class="w-full flex items-center justify-between text-sm gap-3 py-0.5 text-left group">
+                  <span class="truncate group-hover:text-accent-fg">
+                    {{ ex.name }}
+                    <span v-if="isPR(workout, ex)" class="ml-1 text-[10px] font-extrabold text-gold border border-current rounded px-1 py-px align-middle">PR</span>
+                  </span>
+                  <span class="num shrink-0 text-xs text-muted">
+                    {{ ex.sets.length }} sor.
+                    <template v-if="exerciseMaxWeight(ex) > 0"> · max <b class="text-fg">{{ fmtNum(exerciseMaxWeight(ex)) }} kg</b></template>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </article>
+        </div>
+
+        <!-- Lebegő gomb -->
+        <button @click="startNewWorkout" aria-label="Új edzés"
+                class="fixed bottom-[5.5rem] fab-pos z-30 bg-accent text-accent-ink w-16 h-16 rounded-2xl shadow-[0_10px_30px_rgba(132,204,22,.40)] grid place-items-center hover:brightness-105 active:scale-95 transition">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
 
-      <!-- Edit Workout View -->
-      <div v-else-if="currentView === 'edit-workout'" class="pb-10">
-        
-        <!-- Date & Tags -->
-        <div class="mb-6 bg-gray-50 p-4 rounded-xl border">
-          <label class="block text-sm font-bold text-gray-700 mb-1">Dátum</label>
-          <input type="date" v-model="editingWorkout.date" 
-                 class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 mb-4 outline-none">
-          
-          <label class="block text-sm font-bold text-gray-700 mb-1">Címkék (Mit edzettél?)</label>
-          <div class="flex flex-wrap gap-2">
-            <button v-for="tag in AVAILABLE_TAGS" :key="tag" 
-                    @click="toggleTag(tag)"
-                    :class="editingWorkout.tags.includes(tag) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'"
-                    class="border px-3 py-1 rounded-full text-sm transition-colors">
-              {{ tag }}
-            </button>
+      <!-- ===================== HALADÁS ===================== -->
+      <div v-else-if="view === 'progress'" class="pb-28">
+
+        <!-- Gyakorlat választó -->
+        <div v-if="!selectedInfo">
+          <div v-if="!filteredExerciseIndex.length && !progressSearch" class="text-center text-muted mt-14 px-6">
+            <p class="text-lg font-bold text-fg">Még nincs adat</p>
+            <p class="text-sm mt-1">Rögzíts néhány edzést súllyal és ismétléssel, és itt látod majd a fejlődésed.</p>
           </div>
+          <template v-else>
+            <div class="relative mb-3">
+              <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-faint" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input type="search" v-model="progressSearch" placeholder="Gyakorlat keresése…" class="field w-full pl-9 pr-3 py-2.5 rounded-xl text-base">
+            </div>
+            <div class="space-y-2">
+              <button v-for="ex in filteredExerciseIndex" :key="ex.key" @click="selectedExercise = ex.key"
+                      class="card pop w-full rounded-2xl p-3.5 flex items-center gap-3 text-left hover:!border-accent/50">
+                <div class="flex-1 min-w-0">
+                  <div class="font-bold truncate">{{ ex.name }}</div>
+                  <div class="text-xs text-muted num mt-0.5">{{ ex.count }} alkalom · legutóbb {{ formatShortDate(ex.lastDate) }}</div>
+                </div>
+                <div class="text-right">
+                  <div class="num font-extrabold">{{ fmtNum(ex.bestWeight) }} <span class="text-xs text-muted font-semibold">kg</span></div>
+                  <div class="text-[11px] text-muted">legjobb</div>
+                </div>
+                <svg class="w-4 h-4 text-faint" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+              <p v-if="!filteredExerciseIndex.length" class="text-center text-sm text-muted mt-6">Nincs találat.</p>
+            </div>
+          </template>
         </div>
 
-        <!-- Exercises -->
-        <div class="mb-6">
-          <h3 class="text-lg font-bold mb-3 border-b pb-2">Gyakorlatok</h3>
-          
-          <div v-for="(exercise, index) in editingWorkout.exercises" :key="exercise.id" 
-               class="bg-white border rounded-lg p-3 mb-4 shadow-sm relative">
-            
-            <div class="flex justify-between items-center mb-2">
-              <h4 class="font-bold text-blue-900 text-lg">{{ exercise.name }}</h4>
-              <button @click="deleteExercise(exercise.id)" class="text-red-500 text-sm">✖ Törlés</button>
+        <!-- Egy gyakorlat részletei -->
+        <div v-else>
+          <button @click="selectedExercise = null" class="text-sm text-muted hover:text-fg flex items-center gap-1 mb-3">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            Összes gyakorlat
+          </button>
+          <h2 class="text-2xl font-extrabold tracking-tight mb-3">{{ selectedInfo.name }}</h2>
+
+          <div class="grid grid-cols-3 gap-2 mb-4">
+            <div class="card rounded-2xl p-3">
+              <div class="text-[11px] uppercase tracking-wider text-muted">Max súly</div>
+              <div class="num text-xl font-extrabold mt-1">{{ fmtNum(selectedInfo.bestWeight) }}<span class="text-xs text-muted"> kg</span></div>
             </div>
-
-            <!-- Sets list -->
-            <div v-for="(set, sIndex) in exercise.sets" :key="set.id" 
-                 class="mb-3 border-l-4 border-blue-500 pl-2">
-              
-              <div class="flex justify-between items-center mb-1">
-                <span class="text-xs font-bold text-gray-500">{{ sIndex + 1 }}. Sorozat</span>
-                <button @click="deleteSet(exercise, set.id)" class="text-red-400 text-xs hover:text-red-600">Sorozat törlése</button>
-              </div>
-
-              <!-- Parts of the set -->
-              <div class="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 mb-1 px-1">
-                <div class="col-span-1 text-center"></div>
-                <div class="col-span-4 text-center">Súly (kg)</div>
-                <div class="col-span-4 text-center">Ismétlés</div>
-                <div class="col-span-3"></div>
-              </div>
-
-              <div v-for="(part, pIndex) in set.parts" :key="part.id" 
-                   class="grid grid-cols-12 gap-2 mb-1 items-center px-1">
-                <div class="col-span-1 text-center font-medium text-gray-400 text-xs">
-                  <span v-if="set.parts.length > 1">{{ pIndex + 1 }}.</span>
-                </div>
-                <div class="col-span-4">
-                  <input type="number" v-model="part.weight" placeholder="kg" step="0.5"
-                         class="w-full p-2 border rounded text-center focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="col-span-4">
-                  <input type="number" v-model="part.reps" placeholder="ism." 
-                         class="w-full p-2 border rounded text-center focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="col-span-3 flex justify-end gap-1">
-                  <button v-if="set.parts.length > 1" @click="deletePart(set, part.id)" class="text-red-400 hover:text-red-600 p-1" title="Részlet törlése">
-                    🗑️
-                  </button>
-                  <button v-if="pIndex === set.parts.length - 1" @click="addPart(set)" class="text-blue-500 hover:text-blue-700 font-bold p-1 text-lg" title="Kombó / Részlet hozzáadása ehhez a sorozathoz">
-                    +
-                  </button>
-                </div>
-              </div>
+            <div class="card rounded-2xl p-3">
+              <div class="text-[11px] uppercase tracking-wider text-muted">Becsült 1RM</div>
+              <div class="num text-xl font-extrabold mt-1">{{ fmtNum(selectedInfo.bestE1rm) }}<span class="text-xs text-muted"> kg</span></div>
             </div>
-            
-            <button @click="addSet(exercise)" 
-                    class="w-full mt-2 py-2 bg-blue-50 text-blue-700 font-medium rounded border border-blue-200 hover:bg-blue-100 transition text-sm">
-              + Új sorozat hozzáadása
-            </button>
+            <div class="card rounded-2xl p-3">
+              <div class="text-[11px] uppercase tracking-wider text-muted">Alkalom</div>
+              <div class="num text-xl font-extrabold mt-1">{{ selectedInfo.count }}</div>
+            </div>
           </div>
 
-          <!-- Add Exercise -->
-          <div class="mt-4 relative">
-            <label class="block text-sm font-bold text-gray-700 mb-1">Új gyakorlat hozzáadása</label>
-            <div class="flex">
-              <input type="text" v-model="exerciseSearchText" @focus="showAutocomplete = true" 
-                     placeholder="Gyakorlat neve..." 
-                     class="flex-1 p-2 border rounded-l focus:ring-2 focus:ring-blue-500 outline-none z-20">
-              <button @click="addExercise" class="bg-gray-800 text-white px-4 rounded-r font-bold">
-                Hozzáad
+          <!-- Mutató választó -->
+          <div class="flex p-1 rounded-xl bg-surface-2 border border-line mb-3" role="tablist">
+            <button v-for="(label, key) in metricLabels" :key="key" @click="metric = key" role="tab" :aria-selected="metric === key"
+                    :class="metric === key ? 'bg-surface text-fg shadow-sm' : 'text-muted'"
+                    class="flex-1 py-1.5 rounded-lg text-xs font-bold transition">{{ label }}</button>
+          </div>
+
+          <!-- Grafikon -->
+          <div class="card rounded-2xl p-3 pb-2 mb-2 relative" v-if="chart">
+            <div class="flex items-baseline justify-between px-1 mb-1">
+              <span class="text-xs font-semibold text-muted">{{ metricLabels[metric] }} (kg)</span>
+              <span class="text-[11px] text-faint">telt pont = egyéni csúcs</span>
+            </div>
+            <div class="relative">
+              <svg viewBox="0 0 340 190" class="w-full h-auto touch-none select-none block"
+                   @pointermove="onChartMove" @pointerdown="onChartMove" @pointerleave="hoverIndex = null"
+                   role="img" :aria-label="`${metricLabels[metric]} alakulása`">
+                <g v-for="t in chart.ticks" :key="t.v">
+                  <line :x1="chart.L" :x2="chart.W - chart.R" :y1="t.y" :y2="t.y" stroke="var(--c-line)" stroke-width="1"/>
+                  <text :x="chart.L - 6" :y="t.y + 3.5" text-anchor="end" font-size="10" fill="var(--c-muted)" class="num">{{ fmtNum(t.v) }}</text>
+                </g>
+                <path v-if="chart.area" :d="chart.area" fill="var(--c-chart)" fill-opacity="0.10"/>
+                <path :d="chart.path" fill="none" stroke="var(--c-chart)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <line v-if="hoverPoint" :x1="hoverPoint.x" :x2="hoverPoint.x" :y1="chart.T" :y2="chart.H - chart.B" stroke="var(--c-faint)" stroke-width="1" stroke-dasharray="3 3"/>
+                <g v-for="(p, i) in chart.points" :key="p.date + i">
+                  <circle :cx="p.x" :cy="p.y" :r="hoverIndex === i ? 5.5 : 4"
+                          :fill="p.pr ? 'var(--c-chart)' : 'var(--c-surface)'" stroke="var(--c-chart)" stroke-width="2"/>
+                </g>
+                <text :x="chart.L" :y="chart.H - 6" font-size="10" fill="var(--c-muted)">{{ formatShortDate(chart.points[0].date) }}</text>
+                <text v-if="chart.points.length > 1" :x="chart.W - chart.R" :y="chart.H - 6" font-size="10" fill="var(--c-muted)" text-anchor="end">{{ formatShortDate(chart.points[chart.points.length - 1].date) }}</text>
+              </svg>
+              <!-- Tooltip -->
+              <div v-if="hoverPoint" class="pointer-events-none absolute top-0 -translate-x-1/2 rounded-lg bg-fg text-bg px-2.5 py-1.5 text-xs shadow-lg whitespace-nowrap"
+                   :style="{ left: `min(max(${(hoverPoint.x / chart.W) * 100}%, 64px), calc(100% - 64px))` }">
+                <div class="font-bold num">{{ fmtNum(hoverPoint.value) }} kg <span v-if="hoverPoint.pr">🏆</span></div>
+                <div class="opacity-70">{{ formatDate(hoverPoint.date) }}</div>
+              </div>
+            </div>
+          </div>
+          <p v-if="series.length === 1" class="text-xs text-muted text-center mb-3">Egy alkalom után még nincs trend – rögzíts többet!</p>
+          <p class="text-[11px] text-faint mb-4 px-1">A becsült 1RM az Epley-képlettel számolva: súly × (1 + ismétlés / 30).</p>
+
+          <!-- Táblázat -->
+          <h3 class="text-sm font-bold mb-2">Alkalmak</h3>
+          <div class="card rounded-2xl divide-y divide-line">
+            <div v-for="p in [...series].reverse()" :key="p.date + p.value" class="px-3.5 py-2.5 flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold">{{ formatDate(p.date) }} <span v-if="p.pr" class="text-[10px] font-extrabold text-gold border border-current rounded px-1 py-px align-middle ml-1">PR</span></div>
+                <div class="text-xs text-muted num truncate">{{ p.summary }}</div>
+              </div>
+              <div class="num font-bold shrink-0">{{ fmtNum(p.value) }} <span class="text-xs text-muted">kg</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== BEÁLLÍTÁSOK ===================== -->
+      <div v-else-if="view === 'settings'" class="pb-28 space-y-5">
+
+        <!-- Téma -->
+        <section>
+          <h3 class="text-xs uppercase tracking-wider font-bold text-muted mb-2">Megjelenés</h3>
+          <div class="flex p-1 rounded-xl bg-surface-2 border border-line">
+            <button v-for="opt in [['system','Rendszer'],['light','Világos'],['dark','Sötét']]" :key="opt[0]" @click="theme = opt[0]"
+                    :class="theme === opt[0] ? 'bg-surface text-fg shadow-sm' : 'text-muted'"
+                    class="flex-1 py-2 rounded-lg text-sm font-bold transition">{{ opt[1] }}</button>
+          </div>
+        </section>
+
+        <!-- Pihenő -->
+        <section>
+          <h3 class="text-xs uppercase tracking-wider font-bold text-muted mb-2">Pihenő stopper</h3>
+          <div class="card rounded-2xl p-4 space-y-3">
+            <div>
+              <div class="text-sm font-semibold mb-2">Alapértelmezett pihenő</div>
+              <div class="flex gap-2">
+                <button v-for="s in restPresets" :key="s" @click="settings.restSeconds = s"
+                        :class="settings.restSeconds === s ? 'bg-accent text-accent-ink border-accent' : 'bg-surface-2 text-muted border-line'"
+                        class="flex-1 border py-2 rounded-xl text-sm font-bold num">{{ fmtClock(s) }}</button>
+              </div>
+            </div>
+            <label class="flex items-center justify-between gap-3">
+              <span>
+                <span class="text-sm font-semibold block">Automatikus indítás</span>
+                <span class="text-xs text-muted">Új sorozat hozzáadásakor elindul a visszaszámlálás</span>
+              </span>
+              <input type="checkbox" v-model="settings.autoRest" class="w-5 h-5 accent-lime-500">
+            </label>
+          </div>
+        </section>
+
+        <!-- Címkék -->
+        <section>
+          <div class="flex items-baseline justify-between mb-2">
+            <h3 class="text-xs uppercase tracking-wider font-bold text-muted">Címkék</h3>
+            <button @click="resetTags" class="text-xs text-muted hover:text-fg">Alaphelyzet</button>
+          </div>
+          <div class="card rounded-2xl divide-y divide-line">
+            <div v-for="(tag, i) in settings.tags" :key="tag" class="flex items-center gap-2 px-3.5 py-2">
+              <span class="flex-1 text-sm font-semibold">{{ tag }}</span>
+              <button @click="moveTag(i, -1)" :disabled="i === 0" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-fg disabled:opacity-30" aria-label="Fel">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+              </button>
+              <button @click="moveTag(i, 1)" :disabled="i === settings.tags.length - 1" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-fg disabled:opacity-30" aria-label="Le">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <button @click="removeTag(tag)" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-danger" aria-label="Törlés">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
               </button>
             </div>
-            
-            <!-- Autocomplete Dropdown -->
-            <ul v-if="showAutocomplete && filteredExerciseNames.length > 0" 
-                class="absolute z-10 w-full bg-white border border-t-0 rounded-b shadow-lg max-h-40 overflow-y-auto mt-1">
-              <li v-for="name in filteredExerciseNames" :key="name" 
-                  @click="selectExercise(name)"
-                  class="p-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0">
-                {{ name }}
-              </li>
-            </ul>
+            <div class="flex gap-2 p-2.5">
+              <input type="text" v-model="newTagText" @keydown.enter.prevent="addTag" placeholder="Új címke, pl. Alkar" class="field flex-1 min-w-0 px-3 py-2 rounded-xl text-base">
+              <button @click="addTag" :disabled="!newTagText.trim()" class="px-4 rounded-xl bg-fg text-bg font-bold text-sm disabled:opacity-30">Hozzáad</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Sablonok -->
+        <section>
+          <h3 class="text-xs uppercase tracking-wider font-bold text-muted mb-2">Edzéssablonok</h3>
+          <div v-if="!templates.length" class="card rounded-2xl p-4 text-sm text-muted">
+            Még nincs sablonod. Edzés szerkesztése közben a fejlécben lévő <b class="text-fg">„Sablonba”</b> gombbal menthetsz egyet.
+          </div>
+          <div v-else class="card rounded-2xl divide-y divide-line">
+            <div v-for="tpl in templates" :key="tpl.id" class="flex items-center gap-2 px-3.5 py-2.5">
+              <div class="flex-1 min-w-0">
+                <div class="text-sm font-bold truncate">{{ tpl.name }}</div>
+                <div class="text-xs text-muted truncate">{{ tpl.exercises.map(e => e.name).join(', ') }}</div>
+              </div>
+              <button @click="renameTemplate(tpl)" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-fg" aria-label="Átnevezés">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>
+              </button>
+              <button @click="deleteTemplate(tpl)" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-danger" aria-label="Törlés">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Adatok -->
+        <section>
+          <h3 class="text-xs uppercase tracking-wider font-bold text-muted mb-2">Adatok</h3>
+          <div class="card rounded-2xl p-4">
+            <p class="text-sm text-muted mb-3">
+              Az edzéseid csak ebben a böngészőben tárolódnak.
+              <template v-if="daysSinceBackup !== null"> Utolsó mentés: <b class="text-fg">{{ daysSinceBackup === 0 ? 'ma' : `${daysSinceBackup} napja` }}</b>.</template>
+              <template v-else> <b class="text-fg">Még nem készült mentés.</b></template>
+            </p>
+            <div class="flex gap-2">
+              <button @click="exportData" class="flex-1 py-2.5 rounded-xl bg-accent text-accent-ink font-bold text-sm">Mentés (export)</button>
+              <label class="flex-1 py-2.5 rounded-xl bg-surface-2 border border-line font-bold text-sm text-center">
+                Visszatöltés
+                <input type="file" accept=".json,application/json" @change="importData" class="hidden">
+              </label>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ===================== SZERKESZTŐ ===================== -->
+      <div v-else-if="view === 'edit'" class="pb-48">
+
+        <section class="card rounded-2xl p-4 mb-5">
+          <label class="block text-xs uppercase tracking-wider font-bold text-muted mb-1.5">Dátum</label>
+          <input type="date" v-model="editingWorkout.date" class="field w-full px-3 py-2.5 rounded-xl text-base mb-4">
+
+          <label class="block text-xs uppercase tracking-wider font-bold text-muted mb-2">Mit edzettél?</label>
+          <div class="flex flex-wrap gap-2">
+            <button v-for="tag in editorTags" :key="tag" @click="toggleTag(tag)"
+                    :class="editingWorkout.tags.includes(tag) ? 'bg-accent text-accent-ink border-accent font-bold' : 'bg-surface-2 text-muted border-line hover:text-fg'"
+                    class="border px-3.5 py-1.5 rounded-full text-sm transition">{{ tag }}</button>
+          </div>
+        </section>
+
+        <div class="flex items-baseline justify-between mb-3">
+          <h3 class="text-lg font-extrabold">Gyakorlatok</h3>
+          <span class="text-xs text-muted num">{{ editingWorkout.exercises.length }} db</span>
+        </div>
+
+        <section v-for="(exercise, eIndex) in editingWorkout.exercises" :key="exercise.id" class="card pop rounded-2xl p-4 mb-4">
+          <div class="flex justify-between items-center mb-2 gap-2">
+            <h4 class="font-bold text-accent-fg text-base truncate">
+              {{ exercise.name }}
+              <span v-if="isLivePR(exercise)" class="ml-1 text-[10px] font-extrabold text-gold border border-current rounded px-1 py-px align-middle">ÚJ CSÚCS 🏆</span>
+            </h4>
+            <div class="flex shrink-0 text-faint">
+              <button @click="moveExercise(eIndex, -1)" :disabled="eIndex === 0" class="w-8 h-8 grid place-items-center rounded-lg hover:text-fg disabled:opacity-30" aria-label="Feljebb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>
+              </button>
+              <button @click="moveExercise(eIndex, 1)" :disabled="eIndex === editingWorkout.exercises.length - 1" class="w-8 h-8 grid place-items-center rounded-lg hover:text-fg disabled:opacity-30" aria-label="Lejjebb">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <button @click="deleteExercise(exercise)" class="w-8 h-8 grid place-items-center rounded-lg hover:text-danger" aria-label="Gyakorlat törlése">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Legutóbbi alkalom -->
+          <div v-if="lastPerformance(exercise)" class="flex items-center gap-2 rounded-xl bg-surface-2 border border-line px-3 py-2 mb-3">
+            <svg class="w-4 h-4 shrink-0 text-faint" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <div class="flex-1 min-w-0 text-xs">
+              <span class="text-muted">Legutóbb ({{ formatShortDate(lastPerformance(exercise).date) }}):</span>
+              <span class="num font-semibold ml-1">{{ lastPerformance(exercise).summary }}</span>
+            </div>
+            <button v-if="!exercise.sets.some(s => s.parts.some(p => p.weight !== '' || p.reps !== ''))" @click="copyLastSets(exercise)"
+                    class="shrink-0 text-xs font-bold text-accent-fg hover:underline">Átvesz</button>
+          </div>
+
+          <div v-if="exercise.sets.length" class="grid grid-cols-12 gap-2 text-[11px] uppercase tracking-wider font-bold text-faint mb-1.5 px-0.5">
+            <div class="col-span-2">Sor.</div>
+            <div class="col-span-4 text-center">Súly (kg)</div>
+            <div class="col-span-4 text-center">Ismétlés</div>
+            <div class="col-span-2"></div>
+          </div>
+
+          <div v-for="(set, sIndex) in exercise.sets" :key="set.id" class="rounded-xl bg-surface-2/60 border border-line p-1.5 mb-2">
+            <div v-for="(part, pIndex) in set.parts" :key="part.id" class="grid grid-cols-12 gap-2 items-center" :class="pIndex > 0 ? 'mt-1.5' : ''">
+              <div class="col-span-2 pl-1.5">
+                <span v-if="pIndex === 0" class="num inline-grid place-items-center w-7 h-7 rounded-lg bg-accent/20 text-accent-fg text-sm font-bold">{{ sIndex + 1 }}</span>
+                <span v-else class="text-faint text-xs pl-2">↳ {{ pIndex + 1 }}.</span>
+              </div>
+              <div class="col-span-4">
+                <input type="number" inputmode="decimal" v-model="part.weight" placeholder="kg" step="0.5" min="0"
+                       class="field num w-full px-2 py-2 rounded-lg text-center text-base font-semibold">
+              </div>
+              <div class="col-span-4">
+                <input type="number" inputmode="numeric" v-model="part.reps" placeholder="ism." min="0"
+                       class="field num w-full px-2 py-2 rounded-lg text-center text-base font-semibold">
+              </div>
+              <div class="col-span-2 flex justify-end">
+                <button v-if="set.parts.length > 1" @click="deletePart(set, part.id)" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-danger" title="Részlet törlése">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+                <button v-else @click="deleteSet(exercise, set.id)" class="w-8 h-8 grid place-items-center rounded-lg text-faint hover:text-danger" title="Sorozat törlése">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex justify-between items-center mt-1 px-1.5">
+              <button @click="addPart(set)" class="text-[11px] text-muted hover:text-accent-fg py-0.5" title="Drop szett / kombó: újabb részlet ehhez a sorozathoz">+ részlet (drop / kombó)</button>
+              <button v-if="set.parts.length > 1" @click="deleteSet(exercise, set.id)" class="text-[11px] text-faint hover:text-danger py-0.5">sorozat törlése</button>
+            </div>
+          </div>
+
+          <button @click="addSet(exercise)" class="w-full mt-1 py-2.5 rounded-xl border border-dashed border-accent/50 text-accent-fg text-sm font-bold hover:bg-accent/10 transition">
+            + Új sorozat
+          </button>
+        </section>
+
+        <!-- Új gyakorlat -->
+        <section class="relative mt-2">
+          <label class="block text-xs uppercase tracking-wider font-bold text-muted mb-1.5">Új gyakorlat</label>
+          <div class="flex gap-2">
+            <input type="text" v-model="exerciseSearchText"
+                   @focus="showAutocomplete = true" @input="showAutocomplete = true" @blur="hideAutocomplete"
+                   @keydown.enter.prevent="addExercise" @keydown.esc="showAutocomplete = false"
+                   placeholder="pl. Fekvenyomás" autocomplete="off" enterkeyhint="done"
+                   class="field flex-1 min-w-0 px-3 py-2.5 rounded-xl text-base">
+            <button @click="addExercise" :disabled="!exerciseSearchText.trim()" class="px-4 rounded-xl bg-fg text-bg font-bold disabled:opacity-30 transition">Hozzáad</button>
+          </div>
+          <ul v-if="showAutocomplete && filteredExerciseNames.length"
+              class="absolute z-20 left-0 right-0 mt-2 rounded-xl bg-surface border border-line shadow-2xl max-h-56 overflow-y-auto">
+            <li v-for="name in filteredExerciseNames" :key="name" @mousedown.prevent="selectExercise(name)"
+                class="px-3 py-2.5 hover:bg-surface-2 cursor-pointer border-b border-line last:border-b-0 text-sm">{{ name }}</li>
+          </ul>
+        </section>
+
+        <!-- Alsó sáv: stopper + mentés -->
+        <div class="fixed bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-bg via-bg/95 to-transparent pt-6">
+          <div class="max-w-md mx-auto px-4 safe-bottom">
+            <!-- Futó stopper -->
+            <div v-if="restEnd" class="card pop rounded-2xl p-2.5 mb-2.5 flex items-center gap-3 shadow-xl">
+              <div class="relative w-11 h-11 shrink-0">
+                <svg viewBox="0 0 44 44" class="w-11 h-11 -rotate-90">
+                  <circle cx="22" cy="22" r="19" fill="none" stroke="var(--c-line)" stroke-width="4"/>
+                  <circle cx="22" cy="22" r="19" fill="none" stroke="var(--c-chart)" stroke-width="4" stroke-linecap="round"
+                          stroke-dasharray="119.4" :stroke-dashoffset="119.4 * (1 - restProgress)" style="transition: stroke-dashoffset .25s linear"/>
+                </svg>
+              </div>
+              <div class="flex-1">
+                <div class="text-[11px] uppercase tracking-wider text-muted font-bold">Pihenő</div>
+                <div class="num text-2xl font-extrabold leading-none">{{ fmtClock(restRemaining) }}</div>
+              </div>
+              <button @click="adjustRest(-15)" class="h-9 px-2.5 rounded-lg bg-surface-2 border border-line text-xs font-bold num">−15</button>
+              <button @click="adjustRest(15)" class="h-9 px-2.5 rounded-lg bg-surface-2 border border-line text-xs font-bold num">+15</button>
+              <button @click="stopRest" class="w-9 h-9 grid place-items-center rounded-lg text-faint hover:text-danger" aria-label="Stopper leállítása">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+              </button>
+            </div>
+            <div class="flex gap-2.5">
+              <button v-if="!restEnd" @click="startRest()" class="w-14 shrink-0 rounded-2xl bg-surface border border-line grid place-items-center text-muted hover:text-fg" :title="`Pihenő indítása (${fmtClock(settings.restSeconds)})`" aria-label="Pihenő stopper">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M10 2h4"/></svg>
+              </button>
+              <button @click="cancelEdit" class="flex-1 py-3.5 rounded-2xl bg-surface border border-line font-bold hover:bg-surface-2">Mégse</button>
+              <button @click="saveWorkout" class="flex-[2] py-3.5 rounded-2xl bg-accent text-accent-ink font-extrabold shadow-[0_10px_30px_rgba(132,204,22,.30)] hover:brightness-105 active:scale-[.98] transition">Mentés</button>
+            </div>
           </div>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="flex space-x-3 mt-8">
-          <button @click="cancelEdit" class="flex-1 py-3 bg-gray-200 text-gray-800 font-bold rounded-lg">
-            Mégse
-          </button>
-          <button @click="saveWorkout" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md">
-            Mentés
-          </button>
-        </div>
-
       </div>
     </main>
+
+    <!-- ================= ALSÓ NAVIGÁCIÓ ================= -->
+    <nav v-if="view !== 'edit'" class="fixed bottom-0 left-0 right-0 z-20 bg-surface/90 backdrop-blur-xl border-t border-line">
+      <div class="max-w-md mx-auto grid grid-cols-3 safe-bottom pt-1.5">
+        <button v-for="tab in [['list','Edzések'],['progress','Haladás'],['settings','Beállítások']]" :key="tab[0]" @click="goTo(tab[0])"
+                :class="view === tab[0] ? 'text-accent-fg' : 'text-faint hover:text-muted'"
+                class="flex flex-col items-center gap-0.5 py-1 text-[11px] font-bold">
+          <svg v-if="tab[0] === 'list'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+          <svg v-else-if="tab[0] === 'progress'" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M4 19h16M5 15l4-5 4 3 6-7"/></svg>
+          <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+          {{ tab[1] }}
+        </button>
+      </div>
+    </nav>
+
+    <!-- ================= SABLONVÁLASZTÓ ================= -->
+    <transition name="sheet">
+      <div v-if="showTemplatePicker" class="fixed inset-0 z-50 bg-black/50 flex items-end justify-center" @click.self="showTemplatePicker = false">
+        <div class="w-full max-w-md bg-surface rounded-t-3xl border-t border-line p-4 safe-bottom pop">
+          <div class="mx-auto w-10 h-1 rounded-full bg-line mb-4"></div>
+          <h3 class="text-lg font-extrabold mb-3">Új edzés</h3>
+          <button @click="startFromTemplate(null)" class="w-full mb-2 p-3.5 rounded-2xl bg-accent text-accent-ink font-extrabold text-left flex items-center gap-3">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Üres edzés
+          </button>
+          <div class="text-xs uppercase tracking-wider font-bold text-muted mt-4 mb-2">Sablonból</div>
+          <div class="space-y-2 max-h-[50vh] overflow-y-auto">
+            <button v-for="tpl in templates" :key="tpl.id" @click="startFromTemplate(tpl)" class="w-full p-3.5 rounded-2xl bg-surface-2 border border-line text-left hover:border-accent/50">
+              <div class="font-bold">{{ tpl.name }}</div>
+              <div class="text-xs text-muted truncate mt-0.5">{{ tpl.exercises.map(e => e.name).join(', ') }}</div>
+            </button>
+          </div>
+          <button @click="showTemplatePicker = false" class="w-full mt-3 py-3 rounded-2xl text-muted font-bold">Mégse</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- ================= TOAST ================= -->
+    <transition name="fade">
+      <div v-if="toast" role="status"
+           :class="toast.type === 'error' ? 'bg-danger text-white' : 'bg-fg text-bg'"
+           class="fixed left-1/2 -translate-x-1/2 bottom-40 z-[60] px-4 py-2.5 rounded-xl shadow-2xl text-sm font-semibold max-w-[90vw] w-max text-center">
+        {{ toast.message }}
+      </div>
+    </transition>
   </div>
 
   <script src="app.js"></script>
-  
   <script>
-    // Register Service Worker
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').then(reg => {
-          console.log('ServiceWorker bejegyezve.', reg);
-        }).catch(err => {
-          console.log('ServiceWorker hiba:', err);
-        });
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('ServiceWorker hiba:', err));
       });
     }
   </script>
